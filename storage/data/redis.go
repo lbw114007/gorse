@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/go-redis/redis/v8"
+	"github.com/juju/errors"
 	"github.com/scylladb/go-set/strset"
 	"sort"
 	"strconv"
@@ -52,11 +53,11 @@ func (r *Redis) InsertMeasurement(measurement Measurement) error {
 	var ctx = context.Background()
 	data, err := json.Marshal(measurement)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	if err = r.client.Set(ctx, prefixMeasure+measurement.Name+"/"+measurement.Timestamp.String(),
 		data, 0).Err(); err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	return nil
 }
@@ -120,10 +121,10 @@ func (r *Redis) InsertItem(item Item) error {
 	// write item
 	data, err := json.Marshal(item)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	if err = r.client.Set(ctx, prefixItem+item.ItemId, data, 0).Err(); err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	return nil
 }
@@ -132,7 +133,7 @@ func (r *Redis) InsertItem(item Item) error {
 func (r *Redis) BatchInsertItem(items []Item) error {
 	for _, item := range items {
 		if err := r.InsertItem(item); err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	}
 	return nil
@@ -145,12 +146,12 @@ func (r *Redis) ForFeedback(ctx context.Context, action func(key, thisFeedbackTy
 	for {
 		keys, cursor, err = r.client.Scan(ctx, cursor, prefixFeedback+"*", 0).Result()
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 		for _, key := range keys {
 			thisFeedbackType, thisUserId, thisItemId := parseFeedbackKey(key)
 			if err = action(key, thisFeedbackType, thisUserId, thisItemId); err != nil {
-				return err
+				return errors.Trace(err)
 			}
 		}
 		if cursor == 0 {
@@ -165,7 +166,7 @@ func (r *Redis) DeleteItem(itemId string) error {
 	var ctx = context.Background()
 	// remove user
 	if err := r.client.Del(ctx, prefixItem+itemId).Err(); err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	// remove feedback
 	return r.ForFeedback(ctx, func(key, _, _, thisItemId string) error {
@@ -243,7 +244,7 @@ func (r *Redis) GetItemFeedback(itemId string, feedbackTypes ...string) ([]Feedb
 		if itemId == thisItemId && (feedbackTypeSet.IsEmpty() || feedbackTypeSet.Has(thisFeedbackType)) {
 			val, err := r.getFeedback(key)
 			if err != nil {
-				return err
+				return errors.Trace(err)
 			}
 			feedback = append(feedback, val)
 		}
@@ -257,7 +258,7 @@ func (r *Redis) InsertUser(user User) error {
 	var ctx = context.Background()
 	data, err := json.Marshal(user)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	return r.client.Set(ctx, prefixUser+user.UserId, data, 0).Err()
 }
@@ -267,7 +268,7 @@ func (r *Redis) DeleteUser(userId string) error {
 	var ctx = context.Background()
 	// remove user
 	if err := r.client.Del(ctx, prefixUser+userId).Err(); err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	// remove feedback
 	return r.ForFeedback(ctx, func(key, thisFeedbackType, thisUserId, thisItemId string) error {
@@ -343,7 +344,7 @@ func (r *Redis) GetUserFeedback(userId string, feedbackTypes ...string) ([]Feedb
 		if thisUserId == userId && (feedbackTypeSet.IsEmpty() || feedbackTypeSet.Has(thisFeedbackType)) {
 			val, err := r.getFeedback(key)
 			if err != nil {
-				return err
+				return errors.Trace(err)
 			}
 			feedback = append(feedback, val)
 		}
@@ -383,40 +384,40 @@ func (r *Redis) InsertFeedback(feedback Feedback, insertUser, insertItem bool) e
 	var ctx = context.Background()
 	val, err := json.Marshal(feedback)
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	// insert feedback
 	err = r.client.Set(ctx, createFeedbackKey(feedback.FeedbackKey), val, 0).Err()
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	// insert user
 	if insertUser {
 		if exist, err := r.client.Exists(ctx, prefixUser+feedback.UserId).Result(); err != nil {
-			return err
+			return errors.Trace(err)
 		} else if exist == 0 {
 			user := User{UserId: feedback.UserId}
 			data, err := json.Marshal(user)
 			if err != nil {
-				return err
+				return errors.Trace(err)
 			}
 			if err = r.client.Set(ctx, prefixUser+feedback.UserId, data, 0).Err(); err != nil {
-				return err
+				return errors.Trace(err)
 			}
 		}
 	}
 	// Insert item
 	if insertItem {
 		if exist, err := r.client.Exists(ctx, prefixItem+feedback.ItemId).Result(); err != nil {
-			return err
+			return errors.Trace(err)
 		} else if exist == 0 {
 			item := Item{ItemId: feedback.ItemId}
 			data, err := json.Marshal(item)
 			if err != nil {
-				return err
+				return errors.Trace(err)
 			}
 			if err = r.client.Set(ctx, prefixItem+feedback.ItemId, data, 0).Err(); err != nil {
-				return err
+				return errors.Trace(err)
 			}
 		}
 	}
@@ -429,7 +430,7 @@ func (r *Redis) InsertFeedback(feedback Feedback, insertUser, insertItem bool) e
 func (r *Redis) BatchInsertFeedback(feedback []Feedback, insertUser, insertItem bool) error {
 	for _, temp := range feedback {
 		if err := r.InsertFeedback(temp, insertUser, insertItem); err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	}
 	return nil
@@ -444,7 +445,7 @@ func (r *Redis) GetFeedback(cursor string, n int, timeLimit *time.Time, feedback
 		if feedbackTypeSet.IsEmpty() || feedbackTypeSet.Has(thisFeedbackType) {
 			val, err := r.getFeedback(key)
 			if err != nil {
-				return err
+				return errors.Trace(err)
 			}
 			if timeLimit != nil && val.Timestamp.Unix() < timeLimit.Unix() {
 				return nil
@@ -465,7 +466,7 @@ func (r *Redis) GetUserItemFeedback(userId, itemId string, feedbackTypes ...stri
 		if thisUserId == userId && thisItemId == itemId && (feedbackTypeSet.IsEmpty() || feedbackTypeSet.Has(thisFeedbackType)) {
 			val, err := r.getFeedback(key)
 			if err != nil {
-				return err
+				return errors.Trace(err)
 			}
 			feedback = append(feedback, val)
 		}

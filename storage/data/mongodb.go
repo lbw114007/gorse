@@ -17,6 +17,7 @@ package data
 import (
 	"context"
 	"encoding/json"
+	"github.com/juju/errors"
 	"time"
 
 	"github.com/scylladb/go-set/strset"
@@ -50,7 +51,7 @@ func (db *MongoDB) Init() error {
 	var hasUsers, hasItems, hasFeedback, hasMeasurements bool
 	collections, err := d.ListCollectionNames(ctx, bson.M{})
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	for _, collectionName := range collections {
 		switch collectionName {
@@ -67,22 +68,22 @@ func (db *MongoDB) Init() error {
 	// create collections
 	if !hasUsers {
 		if err = d.CreateCollection(ctx, "users"); err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	}
 	if !hasItems {
 		if err = d.CreateCollection(ctx, "items"); err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	}
 	if !hasFeedback {
 		if err = d.CreateCollection(ctx, "feedback"); err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	}
 	if !hasMeasurements {
 		if err = d.CreateCollection(ctx, "measurements"); err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	}
 	// create index
@@ -93,7 +94,7 @@ func (db *MongoDB) Init() error {
 		Options: options.Index().SetUnique(true),
 	})
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	_, err = d.Collection("items").Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys: bson.M{
@@ -102,7 +103,7 @@ func (db *MongoDB) Init() error {
 		Options: options.Index().SetUnique(true),
 	})
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	_, err = d.Collection("feedback").Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys: bson.M{
@@ -111,14 +112,14 @@ func (db *MongoDB) Init() error {
 		Options: options.Index().SetUnique(true),
 	})
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	_, err = d.Collection("feedback").Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys: bson.M{
 			"feedbackkey.userid": 1,
 		},
 	})
-	return err
+	return errors.Trace(err)
 }
 
 // Close connection to MongoDB.
@@ -131,7 +132,7 @@ func (db *MongoDB) InsertMeasurement(measurement Measurement) error {
 	ctx := context.Background()
 	c := db.client.Database(db.dbName).Collection("measurements")
 	_, err := c.InsertOne(ctx, measurement)
-	return err
+	return errors.Trace(err)
 }
 
 // GetMeasurements get recent measurements from MongoDB.
@@ -163,7 +164,7 @@ func (db *MongoDB) InsertItem(item Item) error {
 	opt := options.Update()
 	opt.SetUpsert(true)
 	_, err := c.UpdateOne(ctx, bson.M{"itemid": bson.M{"$eq": item.ItemId}}, bson.M{"$set": item}, opt)
-	return err
+	return errors.Trace(err)
 }
 
 // BatchInsertItem insert items into MongoDB.
@@ -178,7 +179,7 @@ func (db *MongoDB) BatchInsertItem(items []Item) error {
 			SetUpdate(bson.M{"$set": item}))
 	}
 	_, err := c.BulkWrite(ctx, models)
-	return err
+	return errors.Trace(err)
 }
 
 // DeleteItem deletes a item from MongoDB.
@@ -187,13 +188,13 @@ func (db *MongoDB) DeleteItem(itemId string) error {
 	c := db.client.Database(db.dbName).Collection("items")
 	_, err := c.DeleteOne(ctx, bson.M{"itemid": itemId})
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	c = db.client.Database(db.dbName).Collection("feedback")
 	_, err = c.DeleteMany(ctx, bson.M{
 		"feedbackkey.itemid": bson.M{"$eq": itemId},
 	})
-	return err
+	return errors.Trace(err)
 }
 
 // GetItem returns a item from MongoDB.
@@ -276,7 +277,7 @@ func (db *MongoDB) InsertUser(user User) error {
 	opt := options.Update()
 	opt.SetUpsert(true)
 	_, err := c.UpdateOne(ctx, bson.M{"userid": bson.M{"$eq": user.UserId}}, bson.M{"$set": user}, opt)
-	return err
+	return errors.Trace(err)
 }
 
 // DeleteUser deletes a user from MongoDB.
@@ -285,13 +286,13 @@ func (db *MongoDB) DeleteUser(userId string) error {
 	c := db.client.Database(db.dbName).Collection("users")
 	_, err := c.DeleteOne(ctx, bson.M{"userid": userId})
 	if err != nil {
-		return err
+		return errors.Trace(err)
 	}
 	c = db.client.Database(db.dbName).Collection("feedback")
 	_, err = c.DeleteMany(ctx, bson.M{
 		"feedbackkey.userid": bson.M{"$eq": userId},
 	})
-	return err
+	return errors.Trace(err)
 }
 
 // GetUser returns a user from MongoDB.
@@ -373,7 +374,7 @@ func (db *MongoDB) InsertFeedback(feedback Feedback, insertUser, insertItem bool
 		c := db.client.Database(db.dbName).Collection("users")
 		_, err := c.UpdateOne(ctx, bson.M{"userid": feedback.UserId}, bson.M{"$set": bson.M{"userid": feedback.UserId}}, opt)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	} else {
 		_, err := db.GetUser(feedback.UserId)
@@ -381,7 +382,7 @@ func (db *MongoDB) InsertFeedback(feedback Feedback, insertUser, insertItem bool
 			if err == ErrUserNotExist {
 				return nil
 			}
-			return err
+			return errors.Trace(err)
 		}
 	}
 	// insert item
@@ -389,7 +390,7 @@ func (db *MongoDB) InsertFeedback(feedback Feedback, insertUser, insertItem bool
 		c := db.client.Database(db.dbName).Collection("items")
 		_, err := c.UpdateOne(ctx, bson.M{"itemid": feedback.ItemId}, bson.M{"$set": bson.M{"itemid": feedback.ItemId}}, opt)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	} else {
 		_, err := db.GetItem(feedback.ItemId)
@@ -397,7 +398,7 @@ func (db *MongoDB) InsertFeedback(feedback Feedback, insertUser, insertItem bool
 			if err == ErrItemNotExist {
 				return nil
 			}
-			return err
+			return errors.Trace(err)
 		}
 	}
 	// insert feedback
@@ -407,7 +408,7 @@ func (db *MongoDB) InsertFeedback(feedback Feedback, insertUser, insertItem bool
 		"feedbackkey.userid":       feedback.UserId,
 		"feedbackkey.itemid":       feedback.ItemId,
 	}, bson.M{"$set": feedback}, opt)
-	return err
+	return errors.Trace(err)
 }
 
 // BatchInsertFeedback returns multiple feedback into MongoDB.
@@ -433,7 +434,7 @@ func (db *MongoDB) BatchInsertFeedback(feedback []Feedback, insertUser, insertIt
 		c := db.client.Database(db.dbName).Collection("users")
 		_, err := c.BulkWrite(ctx, models)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	} else {
 		for _, userId := range userList {
@@ -443,7 +444,7 @@ func (db *MongoDB) BatchInsertFeedback(feedback []Feedback, insertUser, insertIt
 					users.Remove(userId)
 					continue
 				}
-				return err
+				return errors.Trace(err)
 			}
 		}
 	}
@@ -460,7 +461,7 @@ func (db *MongoDB) BatchInsertFeedback(feedback []Feedback, insertUser, insertIt
 		c := db.client.Database(db.dbName).Collection("items")
 		_, err := c.BulkWrite(ctx, models)
 		if err != nil {
-			return err
+			return errors.Trace(err)
 		}
 	} else {
 		for _, itemId := range itemList {
@@ -470,7 +471,7 @@ func (db *MongoDB) BatchInsertFeedback(feedback []Feedback, insertUser, insertIt
 					items.Remove(itemId)
 					continue
 				}
-				return err
+				return errors.Trace(err)
 			}
 		}
 	}
@@ -485,7 +486,7 @@ func (db *MongoDB) BatchInsertFeedback(feedback []Feedback, insertUser, insertIt
 			}).SetUpdate(bson.M{"$set": f}))
 	}
 	_, err := c.BulkWrite(ctx, models)
-	return err
+	return errors.Trace(err)
 }
 
 // GetFeedback returns multiple feedback from MongoDB.
